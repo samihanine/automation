@@ -1,23 +1,15 @@
 import { z } from "zod";
-import { defineTool, formatIssues } from "./tool-schema";
+import { saveArtefact } from "./save-artefact";
+import { defineTool } from "./tool-schema";
 
 export const updateArtefactTool = defineTool({
   name: "update_artefact",
   description:
-    "Replaces the whole artefact with a new version. The value must match the artefact JSON schema. It is validated, saved and shown to the user immediately. Returns ok or the list of errors to fix.",
-  input: z.object({
-    artefact: z.record(z.string(), z.unknown()).describe("Complete artefact value matching the artefact JSON schema"),
-  }),
-  async run({ artefact }, { artefact: definition, workspace, setArtefactValue }) {
-    const parsed = definition.schema.safeParse(artefact);
-    if (!parsed.success) {
-      return { ok: false, errors: formatIssues(parsed.error), note: "Nothing was saved. Fix every error and send the full artefact again." };
-    }
-    const errors = (await definition.validate?.(parsed.data, workspace)) ?? [];
-    if (errors.length) {
-      return { ok: false, errors, note: "Nothing was saved. Fix every error and send the full artefact again." };
-    }
-    setArtefactValue(parsed.data);
-    return { ok: true, note: "Saved and displayed to the user." };
+    "Replaces the whole artefact. \"input\" IS the complete artefact object matching the artefact JSON schema (no wrapper). Use it to create the artefact or for large rewrites. Returns ok or the errors to fix.",
+  input: z.record(z.string(), z.unknown()).describe("The complete artefact"),
+  run: (input, context) => {
+    const keys = Object.keys(input);
+    const wrapped = keys.length === 1 && keys[0] === "artefact" && typeof input.artefact === "object";
+    return saveArtefact(wrapped ? input.artefact : input, context);
   },
 });

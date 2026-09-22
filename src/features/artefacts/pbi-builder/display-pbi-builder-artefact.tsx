@@ -9,7 +9,7 @@ import type { PbiFilter } from "@/lib/pbi-client";
 import { cn, formatValue } from "@/lib/utils";
 import type { ArtefactRenderProps } from "../artefact-schema";
 import type { PbiBuilderArtefact, PbiBuilderPage, PbiBuilderVisual } from "./pbi-builder-artefact-schema";
-import { visualQuery } from "./visual-query";
+import { fieldLabel, visualQuery } from "./visual-query";
 
 const COLORS = ["#118DFF", "#12239E", "#E66C37", "#6B007B", "#E044A7", "#744EC2", "#D9B300", "#D64550"];
 
@@ -34,7 +34,7 @@ export function DisplayPbiBuilderArtefact({ value, workspace, onChange }: Artefa
         </div>
       )}
       <div className="flex-1 overflow-auto p-4">
-        <div className="grid grid-cols-12 gap-3" style={{ gridAutoRows: "80px" }}>
+        <div className="mx-auto grid aspect-video w-full max-w-6xl grid-cols-12 grid-rows-9 gap-2">
           {page.visuals.map((visual) => (
             <div
               key={visual.name}
@@ -52,7 +52,7 @@ export function DisplayPbiBuilderArtefact({ value, workspace, onChange }: Artefa
           ))}
         </div>
         {page.visuals.length === 0 && (
-          <p className="py-20 text-center text-sm text-muted-foreground">This page has no visuals yet.</p>
+          <p className="-mt-[30%] text-center text-sm text-muted-foreground">This page has no visuals yet.</p>
         )}
       </div>
       <div className="flex shrink-0 gap-px overflow-x-auto border-t bg-background">
@@ -107,30 +107,24 @@ function Visual({
     return <p className="flex h-full items-center justify-center text-xs text-muted-foreground">No data</p>;
   }
 
-  const metrics = visual.values.length
-    ? visual.values
-    : result.columns.filter((column) => column.role === "metric").map((column) => column.name);
-  const category =
-    visual.category ?? result.columns.find((column) => column.role === "dimension")?.name ?? result.columns[0].name;
+  const category = visual.category ? fieldLabel(visual.category) : "";
+  const metrics = visual.values.map(fieldLabel).filter((key) => key !== category);
 
   if (visual.type === "card") {
-    const key = metrics[0] ?? result.columns[0].name;
     return (
       <div className="flex h-full flex-col items-center justify-center">
-        <div className="text-3xl font-semibold tabular-nums">{formatValue(result.rows[0][key], visual.format)}</div>
-        <div className="mt-1 text-xs text-muted-foreground">{key}</div>
+        <div className="text-3xl font-semibold tabular-nums">{formatValue(result.rows[0][metrics[0]], visual.format)}</div>
+        <div className="mt-1 text-xs text-muted-foreground">{metrics[0]}</div>
       </div>
     );
   }
 
   if (visual.type === "table") {
-    const columns = (visual.values.length ? [visual.category, ...visual.values].filter(Boolean) as string[] : result.columns.map((column) => column.name)).map(
-      (key) => ({
-        key,
-        header: key,
-        format: result.columns.find((column) => column.name === key)?.role === "metric" ? visual.format : "text",
-      }),
-    );
+    const columns = result.columns.map((column) => ({
+      key: column.name,
+      header: column.name,
+      format: column.role === "metric" ? visual.format : "text",
+    }));
     return <DataTable className="h-full text-xs" columns={columns} rows={result.rows} />;
   }
 

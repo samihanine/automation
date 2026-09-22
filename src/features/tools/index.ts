@@ -1,9 +1,10 @@
 import { z } from "zod";
 import { answerUserTool } from "./answer-user-tool";
+import { editArtefactTool } from "./edit-artefact-tool";
 import { runDaxQueryTool } from "./run-dax-query-tool";
 import { updateArtefactTool } from "./update-artefact-tool";
 
-export const tools = [runDaxQueryTool, updateArtefactTool, answerUserTool];
+export const tools = [runDaxQueryTool, updateArtefactTool, editArtefactTool, answerUserTool];
 
 export const ANSWER_TOOL = answerUserTool.name;
 

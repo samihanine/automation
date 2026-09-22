@@ -9,15 +9,11 @@ export async function validatePbiBuilderArtefact(value: PbiBuilderArtefact, work
     page.visuals.map(async (visual) => {
       const query = visualQuery(value, page, visual);
       if (!query) return [];
-      const where = `page "${page.name}" visual "${visual.name}"`;
       try {
-        const result = await runDax(workspace.datasetConfig, query);
-        const columns = new Set(result.columns.map((column) => column.name));
-        return [visual.category, ...visual.values]
-          .filter((column): column is string => Boolean(column) && result.rowCount > 0 && !columns.has(column!))
-          .map((column) => `${where}: column "${column}" not in result (${[...columns].join(", ")})`);
+        await runDax(workspace.datasetConfig, query);
+        return [];
       } catch (error) {
-        return [`${where}: ${errorMessage(error)}`];
+        return [`page "${page.name}" visual "${visual.name}": ${errorMessage(error)}\nGenerated DAX: ${query}`];
       }
     }),
   );

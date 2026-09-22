@@ -8,33 +8,40 @@ export const MAX_STEPS = 12;
 const MAX_RESULT_CHARS = 12000;
 
 const json = (value: unknown) => JSON.stringify(value);
+const toolNames = tools.map((tool) => tool.name).join(" | ");
 
-const protocol = `You are an analytics agent inside a web app. You work in a loop: each reply you send is exactly ONE tool call. The app runs it and answers with a TOOL_RESULT message, then you send the next call. Your turn ends only when you call "${ANSWER_TOOL}".
+const replyFormat = `REPLY FORMAT: one JSON object only, starting with { and ending with }, nothing before or after:
+{"thought": "<max 20 words>", "tool": "<${toolNames}>", "input": { ... }}`;
 
-RESPONSE FORMAT (mandatory)
-- Reply with ONE JSON object and nothing else: no text before or after, no markdown fences, no comments.
-- Shape: {"thought": "<one short sentence: why this call>", "tool": "<tool name>", "input": { <tool input> }}
-- The JSON must be valid: double quotes, escaped quotes (\\") and newlines (\\n) inside strings, no trailing commas.
-- Example: {"thought": "Check territories before filtering", "tool": "run_dax_query", "input": {"query": "EVALUATE VALUES('Store'[Territory])"}}
+const protocol = `You are an analytics agent inside a web app. You work in a loop: each reply is exactly ONE tool call as a JSON object. The app runs the tool and sends back a TOOL_RESULT message, then you send the next call. Your turn ends only when you call "${ANSWER_TOOL}".
+
+JSON RULES
+- Output one JSON object and nothing else: no prose, no markdown fences, no comments.
+- Double quotes everywhere. Escape " as \\" and line breaks as \\n inside strings. No trailing commas.
+- Count your braces: every { and [ must be closed. Big objects are where mistakes happen: prefer several small edit_artefact calls to one huge update_artefact.
+- Examples:
+  {"thought": "Check the years available", "tool": "run_dax_query", "input": {"queries": ["EVALUATE VALUES('Time'[Year])"]}}
+  {"thought": "Rename the chart", "tool": "edit_artefact", "input": {"operations": [{"op": "set", "path": "pages.0.visuals.1.title", "value": "Sales by region"}]}}
+  {"thought": "Done", "tool": "${ANSWER_TOOL}", "input": {"message": "The report is ready: …"}}
 
 WORKFLOW
-1. Understand the request. If it is ambiguous in a way that changes the result, ask a short question with ${ANSWER_TOOL}.
-2. Explore with run_dax_query. Use the exact table, column and measure names of the dataset structure. Check values before filtering. Never invent numbers.
-3. Change the artefact with update_artefact, always sending the COMPLETE artefact (everything you keep + your changes). If it returns errors, fix all of them and send it again.
-4. Finish with ${ANSWER_TOOL}: a concise summary of what you did and the key insights, in the user's language. Do not paste the artefact JSON.
+1. If the request is ambiguous in a way that changes the result, ask one short question with ${ANSWER_TOOL}.
+2. Explore with run_dax_query. Batch independent queries (up to 5) in one call. Use the exact table, column and measure names of the dataset structure. Check values before filtering. Never invent numbers.
+3. Build the artefact: update_artefact to create it or rewrite it (input = the complete artefact), edit_artefact for targeted changes. If a tool returns errors, fix all of them in the next call.
+4. Finish with ${ANSWER_TOOL}: a concise summary of what you built and the key figures, in the language of the user. Never paste the artefact JSON.
 
 RULES
-- One tool call per reply. Never repeat an identical call: reuse the previous result.
-- At most ${MAX_STEPS} tool calls per user message: combine queries, do not over-explore.
-- The current artefact state may contain manual changes from the user: keep them unless asked otherwise.
-- If a tool keeps failing after 2 attempts, explain the problem with ${ANSWER_TOOL} instead of looping.
-- DAX: start with EVALUATE (or DEFINE … EVALUATE), write 'Table'[Column], aggregate with SUMMARIZECOLUMNS, rank with TOPN, sort with ORDER BY, use existing measures when they exist.`;
+- One tool call per reply. Never repeat an identical call: reuse previous results.
+- At most ${MAX_STEPS} tool calls per user message.
+- The current artefact state may contain manual changes by the user: keep them unless asked otherwise.
+- If a tool keeps failing after 2 attempts, explain the problem with ${ANSWER_TOOL}.
+- DAX: start with EVALUATE (or DEFINE … EVALUATE), write 'Table'[Column], aggregate with SUMMARIZECOLUMNS, rank with TOPN, sort with ORDER BY, prefer existing measures.`;
 
-export function workspaceContext(workspace: Workspace) {
+function workspaceContext(workspace: Workspace) {
   const { datasetConfig } = workspace;
   return `# WORKSPACE "${workspace.title}"
 
-## Semantic model "${datasetConfig.name}" (id ${datasetConfig.datasetId})
+## Semantic model "${datasetConfig.name}"
 ${datasetConfig.structure || "(structure unavailable)"}
 
 ## Dataset business context (written by the user)
@@ -47,19 +54,6 @@ ${describeReportPages(workspace)}
 ${workspace.reportContext.trim() || "(none)"}`;
 }
 
-function artefactSection(artefact: ArtefactDefinition, workspace: Workspace, value: unknown) {
-  return `# ARTEFACT: ${artefact.label} (${artefact.type})
-${artefact.description}.
-
-${artefact.prompt}
-${artefact.context ? `\n${artefact.context(workspace)}\n` : ""}
-## Artefact JSON schema (update_artefact input.artefact must match it)
-${json(z.toJSONSchema(artefact.schema, { io: "input", unrepresentable: "any" }))}
-
-# CURRENT ARTEFACT STATE
-${json(value)}`;
-}
-
 function instructions(artefact: ArtefactDefinition, workspace: Workspace, value: unknown) {
   return `# INSTRUCTIONS
 ${protocol}
@@ -67,34 +61,37 @@ ${protocol}
 # TOOLS
 ${describeTools()}
 
-${artefactSection(artefact, workspace, value)}`;
+# ARTEFACT: ${artefact.label}
+${artefact.description}.
+
+${artefact.prompt}
+${artefact.context ? `\n${artefact.context(workspace)}\n` : ""}
+## Artefact JSON schema (update_artefact input must match it)
+${json(z.toJSONSchema(artefact.schema, { io: "input", unrepresentable: "any" }))}
+
+# CURRENT ARTEFACT STATE
+${json(value)}`;
 }
 
-export function sessionStartPrompt(artefact: ArtefactDefinition, workspace: Workspace, value: unknown) {
-  return `SESSION_START
-This conversation is about the artefact "${artefact.label}". Everything below is the context you will rely on for the whole conversation.
-
-${workspaceContext(workspace)}
-
-${instructions(artefact, workspace, value)}
-
-# TASK
-The user has not written yet. Call ${ANSWER_TOOL} now (no other tool) with a short welcome in English: one sentence on what the dataset covers, then 3 concrete suggestions of what you can build with this artefact, as a bullet list.`;
-}
-
-export function userTurnPrompt(
-  artefact: ArtefactDefinition,
-  workspace: Workspace,
-  value: unknown,
-  message: string,
-) {
-  return `USER_TURN
-${instructions(artefact, workspace, value)}
+export function userTurnPrompt({
+  artefact,
+  workspace,
+  value,
+  message,
+  firstTurn,
+}: {
+  artefact: ArtefactDefinition;
+  workspace: Workspace;
+  value: unknown;
+  message: string;
+  firstTurn: boolean;
+}) {
+  return `${firstTurn ? `CONVERSATION START: the context below stays valid for the whole conversation.\n\n${workspaceContext(workspace)}\n\n` : "NEW USER MESSAGE: instructions and artefact state are refreshed below.\n\n"}${instructions(artefact, workspace, value)}
 
 # USER MESSAGE
 ${message}
 
-Reply with your first JSON tool call.`;
+${replyFormat}`;
 }
 
 export function toolResultPrompt(tool: string, output: unknown, step: number) {
@@ -104,20 +101,21 @@ export function toolResultPrompt(tool: string, output: unknown, step: number) {
       ? `${serialized.slice(0, MAX_RESULT_CHARS)}… [truncated, ${serialized.length} chars]`
       : serialized;
   const remaining = MAX_STEPS - step;
+  const next =
+    remaining <= 0
+      ? `STEP_LIMIT reached: call ${ANSWER_TOOL} now with what you have and say what is left.`
+      : remaining <= 2
+        ? `Only ${remaining} tool call(s) left: finish and call ${ANSWER_TOOL}.`
+        : `Next call, or ${ANSWER_TOOL} when the request is done.`;
   return `TOOL_RESULT ${tool} (step ${step}/${MAX_STEPS})
 ${body}
 
-${
-  remaining <= 0
-    ? `STEP_LIMIT reached: call ${ANSWER_TOOL} now with what you have and explain what is left.`
-    : remaining <= 2
-      ? `Only ${remaining} tool call(s) left: finish the artefact and call ${ANSWER_TOOL}.`
-      : `Reply with your next JSON tool call, or ${ANSWER_TOOL} when the request is done.`
-}`;
+${next}
+${replyFormat}`;
 }
 
 export function formatErrorPrompt(reason: string) {
-  return `FORMAT_ERROR: ${reason}
-Your reply must be ONLY one JSON object: {"thought": "...", "tool": "<name>", "input": {...}}.
-Available tools: ${tools.map((tool) => tool.name).join(", ")}. Reply again now.`;
+  return `FORMAT_ERROR: your last reply could not be read: ${reason}
+Nothing was executed. Send the call again as valid JSON. If it was large, split it: update_artefact with a smaller artefact first, then edit_artefact to add the rest.
+${replyFormat}`;
 }

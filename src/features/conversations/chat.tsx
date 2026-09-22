@@ -7,6 +7,7 @@ import { NativeSelect } from "@/components/ui/native-select";
 import { Spinner } from "@/components/ui/spinner";
 import { Textarea } from "@/components/ui/textarea";
 import { sendUserMessage, stopAgent, useAgentRun } from "@/features/agent/run-agent";
+import { artefacts } from "@/features/artefacts";
 import { modelIds, models } from "@/lib/llm";
 import type { ModelId } from "@/lib/llm";
 import { cn } from "@/lib/utils";
@@ -34,6 +35,20 @@ export function Chat({ conversation }: { conversation: Conversation }) {
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
         <div className="mx-auto flex max-w-2xl flex-col gap-3">
+          {conversation.events.length === 0 && (
+            <div className="flex flex-col gap-2 py-6">
+              <p className="text-sm text-muted-foreground">What do you want to build? Try:</p>
+              {artefacts[conversation.artefactType].examples.map((example) => (
+                <button
+                  key={example}
+                  onClick={() => void sendUserMessage(conversation.id, example)}
+                  className="rounded-lg border px-3 py-2 text-left text-sm hover:border-primary hover:bg-muted/50"
+                >
+                  {example}
+                </button>
+              ))}
+            </div>
+          )}
           {conversation.events.map((event) => (
             <EventView key={event.id} event={event} />
           ))}

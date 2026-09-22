@@ -3,7 +3,6 @@ import { Link, useNavigate } from "@tanstack/react-router";
 import { SparklesIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "@/components/ui/toast";
-import { startConversationAgent } from "@/features/agent/run-agent";
 import { artefactTypes, artefacts } from "@/features/artefacts";
 import type { ArtefactType } from "@/features/artefacts";
 import { useWorkspaces } from "@/features/workspaces/get-workspaces";
@@ -28,7 +27,6 @@ export function CreateConversationPage({ onCreated }: { onCreated?: () => void }
       });
       onCreated?.();
       await navigate({ to: "/agent", search: { c: conversation.id } });
-      void startConversationAgent(conversation.id);
     } catch (error) {
       toast.add({ title: "Could not create the conversation", description: errorMessage(error), type: "error" });
     }

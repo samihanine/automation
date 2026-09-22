@@ -9,6 +9,11 @@ export const xlsxBuilderArtefact = defineArtefact({
   type: "xlsx-builder",
   label: "Excel Builder",
   description: "Build workbooks from dataset queries or custom tables",
+  examples: [
+    "Export sales by store and month",
+    "Build a workbook with one sheet per category",
+    "Create a summary table of KPIs vs last year",
+  ],
   icon: SheetIcon,
   schema: xlsxArtefactSchema,
   prompt: xlsxArtefactPrompt,

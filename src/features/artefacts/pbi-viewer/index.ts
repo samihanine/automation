@@ -10,6 +10,11 @@ export const pbiViewerArtefact = defineArtefact({
   type: "pbi-viewer",
   label: "PBI Viewer",
   description: "Navigate and filter the workspace Power BI report",
+  examples: [
+    "Show the overview page filtered on the latest year",
+    "What does each page of this report show?",
+    "Filter the report on the best performing district",
+  ],
   icon: MonitorPlayIcon,
   schema: pbiViewerArtefactSchema,
   prompt: pbiViewerArtefactPrompt,

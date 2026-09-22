@@ -5,35 +5,75 @@ import {
   pbiVisualStateSchema,
 } from "../pbi-viewer/pbi-artefact-schema";
 
+export const aggregations = ["Sum", "Average", "Count", "DistinctCount", "Min", "Max"] as const;
+
+export const pbiFieldSchema = z.discriminatedUnion("kind", [
+  z.object({
+    kind: z.literal("column"),
+    table: z.string(),
+    column: z.string(),
+    aggregation: z.enum(aggregations).optional().describe("Required when a numeric column is used as a value"),
+  }),
+  z.object({
+    kind: z.literal("measure"),
+    table: z.string().describe("Home table of the measure (model measure or report measure)"),
+    measure: z.string(),
+  }),
+]);
+
+export const visualTypes = ["card", "bar", "column", "line", "area", "pie", "doughnut", "table", "text"] as const;
+
 export const pbiBuilderVisualSchema = pbiVisualStateSchema
   .extend({
     title: z.string().max(80).default(""),
-    type: z.enum(["card", "bar", "column", "line", "area", "pie", "doughnut", "table", "text"]),
+    type: z.enum(visualTypes),
     layout: z
       .object({
         x: z.number().int().min(1).max(12),
-        y: z.number().int().min(1).max(40),
+        y: z.number().int().min(1).max(9),
         w: z.number().int().min(1).max(12),
-        h: z.number().int().min(1).max(12),
+        h: z.number().int().min(1).max(9),
       })
-      .describe("Position on a 12-column grid, rows of 80px"),
-    query: z.string().optional().describe("DAX query returning the visual data (not needed for text)"),
-    category: z.string().optional().describe("Result column used as axis / slices"),
-    values: z.array(z.string()).default([]).describe("Result columns used as values (card: first one)"),
+      .describe("Position on the 16:9 page split in 12 columns x 9 rows"),
+    category: pbiFieldSchema.optional().describe("Axis / slices column (charts only)"),
+    values: z.array(pbiFieldSchema).max(10).default([]).describe("Measures or aggregated columns; for tables, also plain columns"),
+    sort: z
+      .object({ by: z.enum(["category", "value"]), direction: z.enum(["asc", "desc"]) })
+      .optional(),
     format: z.enum(["number", "integer", "currency", "percent"]).default("number"),
     text: z.string().optional().describe("Content of a text visual"),
   })
   .superRefine((visual, ctx) => {
-    if (visual.layout.x + visual.layout.w - 1 > 12) {
-      ctx.addIssue({ code: "custom", message: "layout.x + layout.w - 1 must be <= 12", path: ["layout"] });
+    const issue = (message: string, path: PropertyKey[] = []) => ctx.addIssue({ code: "custom", message, path });
+    if (visual.layout.x + visual.layout.w - 1 > 12) issue("layout.x + layout.w - 1 must be <= 12", ["layout"]);
+    if (visual.layout.y + visual.layout.h - 1 > 9) issue("layout.y + layout.h - 1 must be <= 9", ["layout"]);
+    if (visual.type === "text") {
+      if (!visual.text) issue("text visuals need 'text'", ["text"]);
+      return;
     }
-    if (visual.type === "text" ? !visual.text : !visual.query?.trim()) {
-      ctx.addIssue({
-        code: "custom",
-        message: visual.type === "text" ? "text visuals need 'text'" : `${visual.type} visuals need a DAX 'query'`,
+    if (visual.values.length === 0) issue(`${visual.type} visuals need at least one value`, ["values"]);
+    const charted = ["bar", "column", "line", "area", "pie", "doughnut"].includes(visual.type);
+    if (charted && visual.category?.kind !== "column") issue(`${visual.type} visuals need a column as category`, ["category"]);
+    if (charted && visual.category?.kind === "column" && visual.category.aggregation) {
+      issue("the category cannot be aggregated", ["category"]);
+    }
+    if (visual.type !== "table") {
+      visual.values.forEach((field, index) => {
+        if (field.kind === "column" && !field.aggregation) {
+          issue("columns used as values need an aggregation (or use a measure)", ["values", index]);
+        }
       });
     }
+    if ((visual.type === "pie" || visual.type === "doughnut" || visual.type === "card") && visual.values.length > 1) {
+      issue(`${visual.type} visuals accept a single value`, ["values"]);
+    }
   });
+
+export const pbiReportMeasureSchema = z.object({
+  table: z.string().describe("Existing table the measure is attached to"),
+  name: z.string().min(1).describe("Must not clash with a model measure or column"),
+  expression: z.string().min(1).describe("DAX expression, e.g. CALCULATE([Total Sales], 'Time'[Year] = 2013)"),
+});
 
 export const pbiBuilderPageSchema = pbiPageStateSchema.extend({
   displayName: z.string().min(1).max(60),
@@ -42,6 +82,7 @@ export const pbiBuilderPageSchema = pbiPageStateSchema.extend({
 
 export const pbiBuilderArtefactSchema = pbiViewerArtefactSchema
   .extend({
+    measures: z.array(pbiReportMeasureSchema).max(30).default([]).describe("Report-level DAX measures"),
     pages: z.array(pbiBuilderPageSchema).min(1).max(10),
   })
   .superRefine((report, ctx) => {
@@ -52,8 +93,14 @@ export const pbiBuilderArtefactSchema = pbiViewerArtefactSchema
     if (new Set(names).size !== names.length) {
       ctx.addIssue({ code: "custom", message: "page names must be unique", path: ["pages"] });
     }
+    const visualNames = report.pages.flatMap((page) => page.visuals.map((visual) => visual.name));
+    if (new Set(visualNames).size !== visualNames.length) {
+      ctx.addIssue({ code: "custom", message: "visual names must be unique across the report", path: ["pages"] });
+    }
   });
 
+export type PbiField = z.infer<typeof pbiFieldSchema>;
+export type PbiReportMeasure = z.infer<typeof pbiReportMeasureSchema>;
 export type PbiBuilderArtefact = z.infer<typeof pbiBuilderArtefactSchema>;
 export type PbiBuilderPage = z.infer<typeof pbiBuilderPageSchema>;
 export type PbiBuilderVisual = z.infer<typeof pbiBuilderVisualSchema>;

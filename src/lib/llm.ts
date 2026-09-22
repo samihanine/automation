@@ -63,18 +63,20 @@ export async function getLastMessage(conversationId: string) {
   return (await getConversationMessages(conversationId)).at(-1);
 }
 
+export type CreateMessageOptions = { signal?: AbortSignal; json?: boolean };
+
 export async function createMessage(
   textContent: string,
   conversationId: string,
   model: ModelId = defaultModel,
-  signal?: AbortSignal,
+  options: CreateMessageOptions = {},
 ) {
   const message = saveMessage(conversationId, "user", textContent, model);
   const history = await getConversationMessages(conversationId);
   const reply = await complete(
     model,
     history.map(({ role, textContent: content }) => ({ role, content })),
-    signal,
+    options,
   );
   saveMessage(conversationId, "assistant", reply, model);
   return message;
@@ -99,7 +101,7 @@ function saveMessage(
 async function complete(
   model: ModelId,
   history: Array<{ role: string; content: string }>,
-  signal?: AbortSignal,
+  options: CreateMessageOptions,
   attempt = 0,
 ): Promise<string> {
   const { aiToken } = readSettings();
@@ -107,17 +109,21 @@ async function complete(
 
   const response = await fetch(OPENAI_URL, {
     method: "POST",
-    signal,
+    signal: options.signal,
     headers: {
       Authorization: `Bearer ${aiToken}`,
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ model, messages: history }),
+    body: JSON.stringify({
+      model,
+      messages: history,
+      ...(options.json ? { response_format: { type: "json_object" } } : {}),
+    }),
   });
 
   if ((response.status === 429 || response.status >= 500) && attempt < 2) {
     await new Promise((resolve) => setTimeout(resolve, 1500 * (attempt + 1)));
-    return complete(model, history, signal, attempt + 1);
+    return complete(model, history, options, attempt + 1);
   }
 
   const body = (await response.json().catch(() => ({}))) as {

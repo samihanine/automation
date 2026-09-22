@@ -9,6 +9,11 @@ export const pptxBuilderArtefact = defineArtefact({
   type: "pptx-builder",
   label: "PPTX Builder",
   description: "Design slide decks on a 9x9 grid, export as PowerPoint",
+  examples: [
+    "Create a 5-slide deck on this year's sales",
+    "Make a one-slide KPI summary for management",
+    "Build a deck comparing chains and districts",
+  ],
   icon: PresentationIcon,
   schema: pptxArtefactSchema,
   prompt: pptxArtefactPrompt,

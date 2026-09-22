@@ -5,18 +5,12 @@ import {
   getConversation,
   updateConversation,
 } from "@/features/conversations/update-conversation";
-import { ANSWER_TOOL, findTool, formatIssues, toolCallSchema } from "@/features/tools";
-import type { ToolCall } from "@/features/tools";
+import { ANSWER_TOOL, findTool, formatIssues } from "@/features/tools";
 import { workspaceStore } from "@/features/workspaces/workspace-store";
 import { createMessage, getLastMessage } from "@/lib/llm";
 import { errorMessage } from "@/lib/utils";
-import {
-  MAX_STEPS,
-  formatErrorPrompt,
-  sessionStartPrompt,
-  toolResultPrompt,
-  userTurnPrompt,
-} from "./agent-prompt";
+import { MAX_STEPS, formatErrorPrompt, toolResultPrompt, userTurnPrompt } from "./agent-prompt";
+import { parseToolCall } from "./parse-tool-call";
 
 const MAX_FORMAT_ERRORS = 3;
 
@@ -46,50 +40,15 @@ function loadContext(conversationId: string) {
   return { conversation, workspace, artefact: artefacts[conversation.artefactType] };
 }
 
-function extractJsonObject(text: string) {
-  const start = text.indexOf("{");
-  if (start === -1) return null;
-  let depth = 0;
-  let inString = false;
-  for (let index = start; index < text.length; index++) {
-    const char = text[index];
-    if (inString) {
-      if (char === "\\") index++;
-      else if (char === '"') inString = false;
-    } else if (char === '"') inString = true;
-    else if (char === "{") depth++;
-    else if (char === "}" && --depth === 0) return text.slice(start, index + 1);
-  }
-  return null;
-}
-
-export function parseToolCall(text: string): { ok: true; call: ToolCall } | { ok: false; reason: string } {
-  const raw = extractJsonObject(text.replace(/```(?:json)?/gi, ""));
-  if (!raw) return { ok: false, reason: "no JSON object found in your reply." };
-  let value: unknown;
-  try {
-    value = JSON.parse(raw);
-  } catch (error) {
-    return { ok: false, reason: `invalid JSON (${errorMessage(error)}).` };
-  }
-  const parsed = toolCallSchema.safeParse(value);
-  return parsed.success
-    ? { ok: true, call: parsed.data }
-    : { ok: false, reason: `wrong shape: ${formatIssues(parsed.error).join("; ")}.` };
-}
-
-export function startConversationAgent(conversationId: string) {
-  const { conversation, workspace, artefact } = loadContext(conversationId);
-  return runLoop(conversationId, sessionStartPrompt(artefact, workspace, conversation.artefact));
-}
-
 export function sendUserMessage(conversationId: string, message: string) {
   const { conversation, workspace, artefact } = loadContext(conversationId);
+  const firstTurn = conversation.events.every((event) => event.kind !== "user");
   addConversationEvent(conversationId, { kind: "user", text: message });
-  if (conversation.events.every((event) => event.kind !== "user")) {
-    updateConversation(conversationId, () => ({ title: message.slice(0, 60) }));
-  }
-  return runLoop(conversationId, userTurnPrompt(artefact, workspace, conversation.artefact, message));
+  if (firstTurn) updateConversation(conversationId, () => ({ title: message.slice(0, 60) }));
+  return runLoop(
+    conversationId,
+    userTurnPrompt({ artefact, workspace, value: conversation.artefact, message, firstTurn }),
+  );
 }
 
 async function runLoop(conversationId: string, firstPrompt: string) {
@@ -108,7 +67,7 @@ async function runLoop(conversationId: string, firstPrompt: string) {
     for (let attempt = 0; attempt < MAX_STEPS + MAX_FORMAT_ERRORS + 2; attempt++) {
       const { conversation, workspace, artefact } = loadContext(conversationId);
       const startedAt = Date.now();
-      await createMessage(prompt, conversationId, conversation.model, run.controller.signal);
+      await createMessage(prompt, conversationId, conversation.model, { signal: run.controller.signal, json: true });
       lastReply = (await getLastMessage(conversationId))?.textContent ?? "";
       const parsed = parseToolCall(lastReply);
 
@@ -121,6 +80,9 @@ async function runLoop(conversationId: string, firstPrompt: string) {
       }
 
       const { call } = parsed;
+      if (parsed.repaired) {
+        log({ kind: "system", text: "Agent reply had malformed JSON, repaired automatically", output: lastReply, model: conversation.model });
+      }
       const tool = findTool(call.tool);
       if (!tool) {
         formatErrors++;
@@ -195,10 +157,14 @@ async function runLoop(conversationId: string, firstPrompt: string) {
 }
 
 function summarize(tool: string, output: unknown) {
+  if (Array.isArray(output)) {
+    const failed = output.filter((result: { error?: string }) => result.error).length;
+    return `Ran ${output.length} queries${failed ? ` (${failed} failed)` : ""}`;
+  }
   const result = output as { error?: string; ok?: boolean; errors?: string[]; rowCount?: number };
   if (result.error) return `${tool} failed: ${result.error}`;
-  if (tool === "update_artefact") {
-    return result.ok ? "Artefact updated" : `Artefact rejected (${result.errors?.length ?? 0} errors)`;
+  if (tool === "update_artefact" || tool === "edit_artefact") {
+    return result.ok ? (tool === "edit_artefact" ? "Artefact edited" : "Artefact updated") : `Artefact rejected (${result.errors?.length ?? 0} errors)`;
   }
   if (tool === "run_dax_query") return `Query returned ${result.rowCount ?? 0} rows`;
   return tool;

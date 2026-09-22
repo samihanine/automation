@@ -9,6 +9,11 @@ export const markdownBuilderArtefact = defineArtefact({
   type: "markdown-builder",
   label: "Markdown Builder",
   description: "Write a report or memo, export it as PDF",
+  examples: [
+    "Write an executive summary of this year's sales",
+    "Explain the main drivers of the sales variance vs last year",
+    "Draft a memo on the top and bottom performing stores",
+  ],
   icon: FileTextIcon,
   schema: markdownArtefactSchema,
   prompt: markdownArtefactPrompt,

@@ -23,6 +23,7 @@ export type ArtefactDefinition<T extends { title: string } = { title: string }> 
   type: ArtefactType;
   label: string;
   description: string;
+  examples: string[];
   icon: LucideIcon;
   schema: z.ZodType<T>;
   prompt: string;
