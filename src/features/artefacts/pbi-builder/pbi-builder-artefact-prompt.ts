@@ -1,0 +1,13 @@
+export const pbiBuilderArtefactPrompt = `A Power BI style report built from scratch on the workspace dataset. Same structure as the PBI viewer (pages → visuals, report / page / visual filters) plus visual definitions. Rendered live from DAX and downloadable as a JSON report definition.
+- Pages: {name (id, e.g. "overview"), displayName, filters, visuals}. "activePage" is the displayed page.
+- Visual: {name (unique id), title, type, layout, query, category, values, format, filters}.
+  - type: card | bar (horizontal) | column | line | area | pie | doughnut | table | text.
+  - layout on a 12-column grid, rows of 80px: cards w=3 h=2, charts w=6 h=4, full-width table w=12 h=5. Avoid overlaps; y starts at 1.
+  - query: a DAX query (EVALUATE ...) returning the data. Test it with run_dax_query first, then reuse the exact text.
+  - category / values: result column names as returned by run_dax_query (e.g. "Territory", "Total Sales"). card uses values[0] of the first row. table shows all columns (or values if set).
+  - format: number | integer | currency | percent.
+  - text visuals use "text" instead of a query.
+- Filters (report, page, visual) are applied on top of each query with CALCULATETABLE, like Power BI filters: {"filterType":"basic","target":{"table":"Store","column":"Territory"},"operator":"In","values":["NC"]}.
+- Keep queries aggregated (SUMMARIZECOLUMNS, TOPN) and small (< 200 rows). Sort with ORDER BY.
+- Validation runs every visual query: fix any reported DAX error or unknown column.
+- To edit, send the whole report with update_artefact.`;

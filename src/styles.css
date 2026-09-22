@@ -81,3 +81,58 @@
     }
   }
 }
+
+@layer components {
+  .markdown {
+    @apply leading-relaxed;
+  }
+  .markdown > * + * {
+    @apply mt-3;
+  }
+  .markdown h1 {
+    @apply text-2xl font-semibold;
+  }
+  .markdown h2 {
+    @apply mt-6 text-lg font-semibold;
+  }
+  .markdown h3 {
+    @apply mt-4 font-semibold;
+  }
+  .markdown ul {
+    @apply list-disc pl-5;
+  }
+  .markdown ol {
+    @apply list-decimal pl-5;
+  }
+  .markdown li + li {
+    @apply mt-1;
+  }
+  .markdown a {
+    @apply text-primary underline;
+  }
+  .markdown blockquote {
+    @apply border-l-2 pl-3 text-muted-foreground italic;
+  }
+  .markdown code {
+    @apply rounded bg-muted px-1 py-0.5 text-[0.9em];
+  }
+  .markdown pre {
+    @apply overflow-x-auto rounded-md bg-muted p-3;
+  }
+  .markdown pre code {
+    @apply bg-transparent p-0;
+  }
+  .markdown table {
+    @apply w-full border-collapse text-sm;
+  }
+  .markdown th,
+  .markdown td {
+    @apply border px-2 py-1 text-left;
+  }
+  .markdown th {
+    @apply bg-muted font-medium;
+  }
+  .markdown hr {
+    @apply my-4;
+  }
+}

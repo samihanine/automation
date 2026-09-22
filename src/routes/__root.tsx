@@ -1,6 +1,8 @@
 import { HeadContent, Scripts, createRootRoute } from "@tanstack/react-router";
 
-import { WorkspaceProvider } from "@/components/table-context";
+import { QueryClientProvider } from "@tanstack/react-query";
+import { Toaster } from "@/components/ui/toast";
+import { queryClient } from "@/lib/query-client";
 
 import appCss from "../styles.css?url";
 
@@ -17,7 +19,7 @@ export const Route = createRootRoute({
         content: "width=device-width, initial-scale=1",
       },
       {
-        title: "Atelier — Your data workspace",
+        title: "Agent — Power BI artefacts",
       },
     ],
     links: [
@@ -56,7 +58,9 @@ function RootDocument({ children }: { children: React.ReactNode }) {
         <HeadContent />
       </head>
       <body>
-        <WorkspaceProvider>{children}</WorkspaceProvider>
+        <QueryClientProvider client={queryClient}>
+          <Toaster>{children}</Toaster>
+        </QueryClientProvider>
         <Scripts />
       </body>
     </html>

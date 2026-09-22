@@ -6,12 +6,23 @@ import { viteSingleFile } from "vite-plugin-singlefile";
 
 const singleFile = process.env.SINGLE_FILE === "1";
 
+const microsoftLoginProxy = {
+  "/ms-login": {
+    target: "https://login.microsoftonline.com",
+    changeOrigin: true,
+    rewrite: (path: string) => path.replace(/^\/ms-login/, ""),
+    configure: (proxy: { on: (event: "proxyReq", handler: (request: { removeHeader: (name: string) => void }) => void) => void }) =>
+      proxy.on("proxyReq", (request) => request.removeHeader("origin")),
+  },
+};
+
 const config = defineConfig({
   define: singleFile
     ? { "import.meta.env.VITE_SINGLE_FILE": JSON.stringify("1") }
     : undefined,
   resolve: { tsconfigPaths: true },
-  server: { forwardConsole: false },
+  server: { forwardConsole: false, proxy: microsoftLoginProxy },
+  preview: { proxy: microsoftLoginProxy },
   plugins: [
     tailwindcss(),
     tanstackStart(
