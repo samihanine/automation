@@ -1,8 +1,9 @@
-import type { Workspace } from "@/features/workspaces/workspace-schema";
+import type { ArtefactContext } from "../artefact-schema";
 import type { PbiViewerArtefact } from "./pbi-artefact-schema";
 
-export async function validatePbiViewerArtefact(value: PbiViewerArtefact, workspace: Workspace) {
-  const pages = new Map(workspace.reportConfig.pages.map((page) => [page.name, page]));
+export async function validatePbiViewerArtefact(value: PbiViewerArtefact, { report }: ArtefactContext) {
+  if (!report) return ["No report selected."];
+  const pages = new Map(report.config.pages.map((page) => [page.name, page]));
   const errors: string[] = [];
   if (!pages.has(value.activePage)) {
     errors.push(`activePage "${value.activePage}" does not exist. Valid pages: ${[...pages.keys()].join(", ")}`);

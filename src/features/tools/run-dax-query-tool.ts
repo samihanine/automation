@@ -1,13 +1,13 @@
 import { z } from "zod";
 import { DaxError, daxRepairHint, isBlankResult, runDax, timeIntelligenceHint } from "@/lib/dax";
-import type { Workspace } from "@/features/workspaces/workspace-schema";
+import type { Dataset } from "@/features/datasets/dataset-schema";
 import { defineTool } from "./tool-schema";
 
 const MAX_ROWS = 50;
 
-async function runOne(workspace: Workspace, query: string) {
+async function runOne(dataset: Dataset, query: string) {
   try {
-    const result = await runDax(workspace.datasetConfig, query);
+    const result = await runDax(dataset.config, query);
     const columnNames = result.columns.map((column) => column.name);
     return {
       rowCount: result.rowCount,
@@ -27,12 +27,12 @@ async function runOne(workspace: Workspace, query: string) {
 export const runDaxQueryTool = defineTool({
   name: "run_dax_query",
   description:
-    "Runs 1 to 5 DAX queries on the workspace semantic model and returns, for each, the columns and the first 50 rows. Batch independent queries in one call. Use it to explore values and to get every number you show.",
+    "Runs 1 to 5 DAX queries on the dataset semantic model and returns, for each, the columns and the first 50 rows. Batch independent queries in one call. Use it to explore values and to get every number you show.",
   input: z.object({
     queries: z.array(z.string().min(1)).min(1).max(5).describe("DAX queries, each starting with EVALUATE or DEFINE"),
   }),
-  async run({ queries }, { workspace }) {
-    const results = await Promise.all(queries.map((query) => runOne(workspace, query)));
+  async run({ queries }, { dataset }) {
+    const results = await Promise.all(queries.map((query) => runOne(dataset, query)));
     return results.length === 1 ? results[0] : results;
   },
 });

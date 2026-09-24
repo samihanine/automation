@@ -1,13 +1,13 @@
 import { useSyncExternalStore } from "react";
-import { artefacts } from "@/features/artefacts";
+import { resolveContext } from "@/features/conversations/conversation-context";
 import {
   addConversationEvent,
   getConversation,
   updateConversation,
 } from "@/features/conversations/update-conversation";
-import { ANSWER_TOOL, findTool, formatIssues } from "@/features/tools";
-import { workspaceStore } from "@/features/workspaces/workspace-store";
-import { createMessage, getLastMessage } from "@/lib/llm";
+import { ANSWER_TOOL, availableTools, formatIssues } from "@/features/tools";
+import type { ToolContext } from "@/features/tools";
+import { createMessage, getLastMessage, uploadFile } from "@/lib/llm";
 import { errorMessage } from "@/lib/utils";
 import { MAX_STEPS, formatErrorPrompt, toolResultPrompt, userTurnPrompt } from "./agent-prompt";
 import { parseToolCall } from "./parse-tool-call";
@@ -33,21 +33,44 @@ export function stopAgent(conversationId: string) {
   runs.get(conversationId)?.controller.abort();
 }
 
-function loadContext(conversationId: string) {
+function loadContext(conversationId: string): { conversation: ReturnType<typeof getConversation>; context: ToolContext } {
   const conversation = getConversation(conversationId);
-  const workspace = workspaceStore.get(conversation.workspaceId);
-  if (!workspace) throw new Error("The workspace of this conversation was deleted.");
-  return { conversation, workspace, artefact: artefacts[conversation.artefactType] };
+  const { dataset, report, definition } = resolveContext(conversation.datasetId, conversation.artefact);
+  if (!dataset) throw new Error("The dataset of this conversation was deleted. Select another one.");
+  return {
+    conversation,
+    context: {
+      dataset,
+      report,
+      artefact: definition,
+      getArtefactValue: () => getConversation(conversationId).artefact?.value,
+      setArtefactValue: (value) =>
+        updateConversation(conversationId, ({ artefact }) => ({ artefact: artefact && { ...artefact, value } })),
+    },
+  };
 }
 
-export function sendUserMessage(conversationId: string, message: string) {
-  const { conversation, workspace, artefact } = loadContext(conversationId);
+export async function sendUserMessage(conversationId: string, message: string, files: File[] = []) {
+  const { conversation, context } = loadContext(conversationId);
   const firstTurn = conversation.events.every((event) => event.kind !== "user");
+  for (const file of files) {
+    const stored = await uploadFile(file, conversationId);
+    addConversationEvent(conversationId, {
+      kind: "file",
+      text: file.name,
+      file: { id: stored.fileId ?? "", name: file.name, type: file.type },
+    });
+  }
   addConversationEvent(conversationId, { kind: "user", text: message });
-  if (firstTurn) updateConversation(conversationId, () => ({ title: message.slice(0, 60) }));
   return runLoop(
     conversationId,
-    userTurnPrompt({ artefact, workspace, value: conversation.artefact, message, firstTurn }),
+    userTurnPrompt({
+      context,
+      value: conversation.artefact?.value,
+      message,
+      firstTurn,
+      attachments: files.map((file) => file.name),
+    }),
   );
 }
 
@@ -65,7 +88,7 @@ async function runLoop(conversationId: string, firstPrompt: string) {
 
   try {
     for (let attempt = 0; attempt < MAX_STEPS + MAX_FORMAT_ERRORS + 2; attempt++) {
-      const { conversation, workspace, artefact } = loadContext(conversationId);
+      const { conversation, context } = loadContext(conversationId);
       const startedAt = Date.now();
       await createMessage(prompt, conversationId, conversation.model, { signal: run.controller.signal, json: true });
       lastReply = (await getLastMessage(conversationId))?.textContent ?? "";
@@ -75,7 +98,7 @@ async function runLoop(conversationId: string, firstPrompt: string) {
         formatErrors++;
         log({ kind: "system", text: `Unreadable agent reply (${formatErrors}/${MAX_FORMAT_ERRORS}): ${parsed.reason}`, output: lastReply, model: conversation.model });
         if (formatErrors >= MAX_FORMAT_ERRORS) break;
-        prompt = formatErrorPrompt(parsed.reason);
+        prompt = formatErrorPrompt(context, parsed.reason);
         continue;
       }
 
@@ -83,12 +106,12 @@ async function runLoop(conversationId: string, firstPrompt: string) {
       if (parsed.repaired) {
         log({ kind: "system", text: "Agent reply had malformed JSON, repaired automatically", output: lastReply, model: conversation.model });
       }
-      const tool = findTool(call.tool);
+      const tool = availableTools(context).find((item) => item.name === call.tool);
       if (!tool) {
         formatErrors++;
         log({ kind: "system", text: `Unknown tool "${call.tool}"`, input: call.input, model: conversation.model });
         if (formatErrors >= MAX_FORMAT_ERRORS) break;
-        prompt = formatErrorPrompt(`unknown tool "${call.tool}".`);
+        prompt = formatErrorPrompt(context, `unknown or unavailable tool "${call.tool}".`);
         continue;
       }
 
@@ -96,7 +119,7 @@ async function runLoop(conversationId: string, firstPrompt: string) {
       if (!input.success) {
         const errors = formatIssues(input.error);
         log({ kind: "system", text: `Invalid input for ${tool.name}`, tool: tool.name, input: call.input, output: errors, model: conversation.model });
-        prompt = toolResultPrompt(tool.name, { error: "Invalid input", errors }, ++run.step);
+        prompt = toolResultPrompt(context, tool.name, { error: "Invalid input", errors }, ++run.step);
         notify();
         continue;
       }
@@ -116,12 +139,7 @@ async function runLoop(conversationId: string, firstPrompt: string) {
           : signature === lastSignature
           ? { error: "Identical to your previous call. Use its result, change the input or answer the user." }
           : await tool
-              .run(input.data, {
-                workspace,
-                artefact,
-                getArtefactValue: () => getConversation(conversationId).artefact,
-                setArtefactValue: (value) => updateConversation(conversationId, () => ({ artefact: value })),
-              })
+              .run(input.data, context)
               .catch((error: unknown) => ({ error: errorMessage(error) }));
       lastSignature = signature;
 
@@ -137,7 +155,7 @@ async function runLoop(conversationId: string, firstPrompt: string) {
       });
 
       if (run.controller.signal.aborted) throw new DOMException("Stopped", "AbortError");
-      prompt = toolResultPrompt(tool.name, output, run.step);
+      prompt = toolResultPrompt(context, tool.name, output, run.step);
     }
 
     log({
@@ -167,5 +185,6 @@ function summarize(tool: string, output: unknown) {
     return result.ok ? (tool === "edit_artefact" ? "Artefact edited" : "Artefact updated") : `Artefact rejected (${result.errors?.length ?? 0} errors)`;
   }
   if (tool === "run_dax_query") return `Query returned ${result.rowCount ?? 0} rows`;
+  if (tool === "read_report") return "Read the displayed report";
   return tool;
 }

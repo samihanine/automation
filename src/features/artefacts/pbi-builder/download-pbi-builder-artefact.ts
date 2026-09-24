@@ -1,10 +1,10 @@
 import { buildThinPbix } from "@/lib/pbix";
 import { slugify } from "@/lib/utils";
-import type { Workspace } from "@/features/workspaces/workspace-schema";
+import type { ArtefactContext } from "../artefact-schema";
 import type { PbiBuilderArtefact } from "./pbi-builder-artefact-schema";
 import { buildPbixLayout } from "./pbix-layout";
 
-export async function downloadPbiBuilderArtefact(value: PbiBuilderArtefact, workspace: Workspace) {
-  const blob = buildThinPbix(buildPbixLayout(value), workspace.datasetConfig.datasetId);
+export async function downloadPbiBuilderArtefact(value: PbiBuilderArtefact, { dataset }: ArtefactContext) {
+  const blob = buildThinPbix(buildPbixLayout(value), dataset.config.datasetId);
   return new File([blob], `${slugify(value.title)}.pbix`, { type: blob.type });
 }

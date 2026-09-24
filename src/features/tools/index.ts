@@ -1,19 +1,19 @@
 import { z } from "zod";
 import { answerUserTool } from "./answer-user-tool";
 import { editArtefactTool } from "./edit-artefact-tool";
+import { readReportTool } from "./read-report-tool";
 import { runDaxQueryTool } from "./run-dax-query-tool";
+import type { ToolContext } from "./tool-schema";
 import { updateArtefactTool } from "./update-artefact-tool";
 
-export const tools = [runDaxQueryTool, updateArtefactTool, editArtefactTool, answerUserTool];
+const allTools = [runDaxQueryTool, readReportTool, updateArtefactTool, editArtefactTool, answerUserTool];
 
 export const ANSWER_TOOL = answerUserTool.name;
 
-export function findTool(name: string) {
-  return tools.find((tool) => tool.name === name);
-}
+export const availableTools = (context: ToolContext) => allTools.filter((tool) => tool.available?.(context) ?? true);
 
-export function describeTools() {
-  return tools
+export function describeTools(context: ToolContext) {
+  return availableTools(context)
     .map((tool) =>
       [
         `## ${tool.name}`,

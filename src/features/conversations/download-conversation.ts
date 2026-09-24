@@ -1,28 +1,21 @@
-import { workspaceStore } from "@/features/workspaces/workspace-store";
+import { datasets } from "@/features/datasets/dataset-store";
 import { getConversationMessages } from "@/lib/llm";
 import { downloadJson } from "@/lib/utils";
 import type { Conversation } from "./conversation-schema";
 
 export async function downloadConversation(conversation: Conversation) {
-  const workspace = workspaceStore.get(conversation.workspaceId);
+  const { events, artefact, ...meta } = conversation;
   downloadJson(
     {
       exportedAt: new Date().toISOString(),
-      conversation: {
-        id: conversation.id,
-        title: conversation.title,
-        artefactType: conversation.artefactType,
-        model: conversation.model,
-        createdAt: conversation.createdAt,
-        updatedAt: conversation.updatedAt,
-      },
-      workspace: workspace && { id: workspace.id, title: workspace.title },
-      displayedMessages: conversation.events
-        .filter((event) => event.kind === "user" || event.kind === "assistant")
+      conversation: meta,
+      dataset: datasets.get(conversation.datasetId)?.name,
+      displayedMessages: events
+        .filter((event) => event.kind === "user" || event.kind === "assistant" || event.kind === "file")
         .map(({ kind, text, at }) => ({ role: kind, text, at })),
-      events: conversation.events,
+      events,
       llmMessages: await getConversationMessages(conversation.id),
-      artefact: conversation.artefact,
+      artefact,
     },
     `conversation-${conversation.title}`,
   );

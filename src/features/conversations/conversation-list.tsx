@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { formatDistanceToNow } from "date-fns";
-import { DownloadIcon, HistoryIcon, Trash2Icon } from "lucide-react";
+import { DownloadIcon, HistoryIcon, MessageSquareIcon, Trash2Icon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { artefacts } from "@/features/artefacts";
@@ -30,7 +30,8 @@ export function ConversationList({ activeId }: { activeId?: string }) {
             <p className="px-3 text-sm text-muted-foreground">No conversation yet.</p>
           )}
           {conversations.map((conversation) => {
-            const { icon: Icon, label } = artefacts[conversation.artefactType];
+            const definition = conversation.artefact ? artefacts[conversation.artefact.type] : null;
+            const Icon = definition?.icon ?? MessageSquareIcon;
             return (
               <div
                 key={conversation.id}
@@ -49,7 +50,7 @@ export function ConversationList({ activeId }: { activeId?: string }) {
                   <div className="min-w-0">
                     <div className="truncate text-sm">{conversation.title}</div>
                     <div className="text-xs text-muted-foreground">
-                      {label} · {formatDistanceToNow(new Date(conversation.updatedAt), { addSuffix: true })}
+                      {definition?.label ?? "Chat"} · {formatDistanceToNow(new Date(conversation.updatedAt), { addSuffix: true })}
                     </div>
                   </div>
                 </Link>

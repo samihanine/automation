@@ -1,55 +1,57 @@
 import { useEffect, useRef, useState } from "react";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
-import { AlertCircleIcon, ArrowUpIcon, InfoIcon, SquareIcon, WrenchIcon } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
+import { AlertCircleIcon, ArrowUpIcon, FileIcon, InfoIcon, PaperclipIcon, SquareIcon, WrenchIcon, XIcon } from "lucide-react";
+import { RichMarkdown } from "@/components/rich-markdown";
 import { Button } from "@/components/ui/button";
 import { NativeSelect } from "@/components/ui/native-select";
 import { Spinner } from "@/components/ui/spinner";
 import { Textarea } from "@/components/ui/textarea";
-import { sendUserMessage, stopAgent, useAgentRun } from "@/features/agent/run-agent";
-import { artefacts } from "@/features/artefacts";
-import { modelIds, models } from "@/lib/llm";
-import type { ModelId } from "@/lib/llm";
+import { stopAgent, useAgentRun } from "@/features/agent/run-agent";
+import { getFile } from "@/lib/llm";
+import { modelIds, models } from "@/lib/models";
+import type { ModelId } from "@/lib/models";
 import { cn } from "@/lib/utils";
-import type { Conversation, ConversationEvent } from "./conversation-schema";
-import { updateConversation } from "./update-conversation";
+import type { ConversationEvent } from "./conversation-schema";
 
-export function Chat({ conversation }: { conversation: Conversation }) {
-  const step = useAgentRun(conversation.id);
+type ChatProps = {
+  conversationId?: string;
+  events: ConversationEvent[];
+  model: ModelId;
+  onModelChange: (model: ModelId) => void;
+  onSend: (message: string, files: File[]) => void;
+  disabledReason?: string;
+};
+
+export function Chat({ conversationId, events, model, onModelChange, onSend, disabledReason }: ChatProps) {
+  const step = useAgentRun(conversationId);
   const running = step !== null;
   const [draft, setDraft] = useState("");
+  const [files, setFiles] = useState<File[]>([]);
+  const input = useRef<HTMLInputElement>(null);
   const bottom = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     bottom.current?.scrollIntoView({ block: "end" });
-  }, [conversation.events.length, running]);
+  }, [events.length, running]);
 
   const send = () => {
     const message = draft.trim();
-    if (!message || running) return;
+    if (!message || running || disabledReason) return;
+    onSend(message, files);
     setDraft("");
-    void sendUserMessage(conversation.id, message);
+    setFiles([]);
   };
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
         <div className="mx-auto flex max-w-2xl flex-col gap-3">
-          {conversation.events.length === 0 && (
-            <div className="flex flex-col gap-2 py-6">
-              <p className="text-sm text-muted-foreground">What do you want to build? Try:</p>
-              {artefacts[conversation.artefactType].examples.map((example) => (
-                <button
-                  key={example}
-                  onClick={() => void sendUserMessage(conversation.id, example)}
-                  className="rounded-lg border px-3 py-2 text-left text-sm hover:border-primary hover:bg-muted/50"
-                >
-                  {example}
-                </button>
-              ))}
-            </div>
+          {events.length === 0 && (
+            <p className="py-10 text-center text-sm text-muted-foreground">
+              {disabledReason ?? "Ask a question about the dataset, or open an artefact on the right and describe what to build."}
+            </p>
           )}
-          {conversation.events.map((event) => (
+          {events.map((event) => (
             <EventView key={event.id} event={event} />
           ))}
           {running && (
@@ -69,50 +71,94 @@ export function Chat({ conversation }: { conversation: Conversation }) {
           send();
         }}
       >
-        <div className="mx-auto flex max-w-2xl items-end gap-2">
-          <NativeSelect
-            size="sm"
-            aria-label="Model"
-            value={conversation.model}
-            onChange={(event) =>
-              updateConversation(conversation.id, () => ({ model: event.target.value as ModelId }))
-            }
-          >
-            {modelIds.map((id) => (
-              <option key={id} value={id}>
-                {models[id].label}
-              </option>
-            ))}
-          </NativeSelect>
-          <Textarea
-            value={draft}
-            onChange={(event) => setDraft(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === "Enter" && !event.shiftKey) {
-                event.preventDefault();
-                send();
-              }
-            }}
-            placeholder="Ask the agent…"
-            rows={1}
-            className="max-h-40 min-h-9 flex-1 resize-none"
-          />
-          {running ? (
-            <Button type="button" variant="outline" size="icon" onClick={() => stopAgent(conversation.id)} aria-label="Stop">
-              <SquareIcon />
-            </Button>
-          ) : (
-            <Button type="submit" size="icon" disabled={!draft.trim()} aria-label="Send">
-              <ArrowUpIcon />
-            </Button>
+        <div className="mx-auto flex max-w-2xl flex-col gap-2">
+          {files.length > 0 && (
+            <div className="flex flex-wrap gap-1.5">
+              {files.map((file, index) => (
+                <span key={index} className="flex items-center gap-1 rounded-md border bg-muted px-2 py-1 text-xs">
+                  <FileIcon className="size-3" />
+                  {file.name}
+                  <button type="button" onClick={() => setFiles(files.filter((_, other) => other !== index))} aria-label="Remove file">
+                    <XIcon className="size-3" />
+                  </button>
+                </span>
+              ))}
+            </div>
           )}
+          <div className="flex items-end gap-2">
+            <NativeSelect size="sm" aria-label="Model" value={model} onChange={(event) => onModelChange(event.target.value as ModelId)}>
+              {modelIds.map((id) => (
+                <option key={id} value={id}>
+                  {models[id].label}
+                </option>
+              ))}
+            </NativeSelect>
+            <Button type="button" variant="ghost" size="icon" onClick={() => input.current?.click()} aria-label="Attach files" disabled={Boolean(disabledReason)}>
+              <PaperclipIcon />
+            </Button>
+            <input
+              ref={input}
+              type="file"
+              multiple
+              hidden
+              onChange={(event) => {
+                setFiles([...files, ...(event.target.files ?? [])]);
+                event.target.value = "";
+              }}
+            />
+            <Textarea
+              value={draft}
+              onChange={(event) => setDraft(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" && !event.shiftKey) {
+                  event.preventDefault();
+                  send();
+                }
+              }}
+              placeholder={disabledReason ?? "Ask the agent…"}
+              disabled={Boolean(disabledReason)}
+              rows={1}
+              className="max-h-40 min-h-9 flex-1 resize-none"
+            />
+            {running && conversationId ? (
+              <Button type="button" variant="outline" size="icon" onClick={() => stopAgent(conversationId)} aria-label="Stop">
+                <SquareIcon />
+              </Button>
+            ) : (
+              <Button type="submit" size="icon" disabled={!draft.trim() || Boolean(disabledReason)} aria-label="Send">
+                <ArrowUpIcon />
+              </Button>
+            )}
+          </div>
         </div>
       </form>
     </div>
   );
 }
 
+function FileEvent({ file }: { file: NonNullable<ConversationEvent["file"]> }) {
+  const { data: url } = useQuery({
+    queryKey: ["file-url", file.id],
+    queryFn: async () => {
+      const stored = await getFile(file.id);
+      return stored ? URL.createObjectURL(stored.blob) : null;
+    },
+    enabled: file.type.startsWith("image/"),
+    staleTime: Infinity,
+  });
+  return (
+    <div className="ml-auto flex max-w-[85%] flex-col items-end gap-1">
+      {url && <img src={url} alt={file.name} className="max-h-48 rounded-lg border" />}
+      <span className="flex items-center gap-1 rounded-md border px-2 py-1 text-xs text-muted-foreground">
+        <FileIcon className="size-3" />
+        {file.name}
+      </span>
+    </div>
+  );
+}
+
 function EventView({ event }: { event: ConversationEvent }) {
+  if (event.kind === "file" && event.file) return <FileEvent file={event.file} />;
   if (event.kind === "user") {
     return (
       <div className="ml-auto max-w-[85%] rounded-2xl rounded-br-sm bg-primary px-3.5 py-2 text-sm whitespace-pre-wrap text-primary-foreground">
@@ -120,13 +166,7 @@ function EventView({ event }: { event: ConversationEvent }) {
       </div>
     );
   }
-  if (event.kind === "assistant") {
-    return (
-      <div className="markdown max-w-[95%] text-sm">
-        <ReactMarkdown remarkPlugins={[remarkGfm]}>{event.text}</ReactMarkdown>
-      </div>
-    );
-  }
+  if (event.kind === "assistant") return <RichMarkdown className="max-w-[95%] text-sm">{event.text}</RichMarkdown>;
   const Icon = event.kind === "tool" ? WrenchIcon : event.kind === "error" ? AlertCircleIcon : InfoIcon;
   const hasDetails = event.input !== undefined || event.output !== undefined;
   return (
@@ -151,7 +191,7 @@ function Json({ label, value }: { label: string; value: unknown }) {
   return (
     <div>
       <div className="mb-0.5 font-sans font-medium">{label}</div>
-      <pre className="max-h-60 overflow-auto whitespace-pre-wrap break-all">
+      <pre className="max-h-60 overflow-auto break-all whitespace-pre-wrap">
         {typeof value === "string" ? value : JSON.stringify(value, null, 2)}
       </pre>
     </div>

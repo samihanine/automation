@@ -7,21 +7,16 @@ import { pptxArtefactSchema } from "./pptx-artefact-schema";
 
 export const pptxBuilderArtefact = defineArtefact({
   type: "pptx-builder",
-  label: "PPTX Builder",
-  description: "Design slide decks on a 9x9 grid, export as PowerPoint",
-  examples: [
-    "Create a 5-slide deck on this year's sales",
-    "Make a one-slide KPI summary for management",
-    "Build a deck comparing chains and districts",
-  ],
+  label: "PowerPoint",
+  description: "Design slide decks on a 9x9 grid, export as .pptx",
   icon: PresentationIcon,
   schema: pptxArtefactSchema,
   prompt: pptxArtefactPrompt,
-  initial: (workspace) => ({
-    title: `${workspace.title} presentation`,
+  initial: ({ dataset }) => ({
+    title: `${dataset.name} presentation`,
     theme: { preset: "corporate" as const, font: "Calibri" as const },
     slides: [],
   }),
   render: DisplayPptxArtefact,
-  download: downloadPptxArtefact,
+  downloads: [{ label: "PowerPoint", run: downloadPptxArtefact }],
 });

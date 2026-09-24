@@ -7,21 +7,23 @@ import {
 
 export const aggregations = ["Sum", "Average", "Count", "DistinctCount", "Min", "Max"] as const;
 
+const columnFieldSchema = z.object({
+  kind: z.literal("column"),
+  table: z.string(),
+  column: z.string(),
+  aggregation: z.enum(aggregations).optional().describe("Required when a column is used as a value"),
+});
+
 export const pbiFieldSchema = z.discriminatedUnion("kind", [
-  z.object({
-    kind: z.literal("column"),
-    table: z.string(),
-    column: z.string(),
-    aggregation: z.enum(aggregations).optional().describe("Required when a numeric column is used as a value"),
-  }),
-  z.object({
-    kind: z.literal("measure"),
-    table: z.string().describe("Home table of the measure (model measure or report measure)"),
-    measure: z.string(),
-  }),
+  columnFieldSchema,
+  z.object({ kind: z.literal("measure"), table: z.string().describe("Home table of the model measure"), measure: z.string() }),
 ]);
 
-export const visualTypes = ["card", "bar", "column", "line", "area", "pie", "doughnut", "table", "text"] as const;
+const groupFieldSchema = columnFieldSchema.omit({ aggregation: true });
+
+export const visualTypes = ["card", "bar", "column", "line", "area", "pie", "doughnut", "table", "matrix", "text"] as const;
+
+const chartTypes = new Set(["bar", "column", "line", "area", "pie", "doughnut"]);
 
 export const pbiBuilderVisualSchema = pbiVisualStateSchema
   .extend({
@@ -34,12 +36,12 @@ export const pbiBuilderVisualSchema = pbiVisualStateSchema
         w: z.number().int().min(1).max(12),
         h: z.number().int().min(1).max(9),
       })
-      .describe("Position on the 16:9 page split in 12 columns x 9 rows"),
-    category: pbiFieldSchema.optional().describe("Axis / slices column (charts only)"),
-    values: z.array(pbiFieldSchema).max(10).default([]).describe("Measures or aggregated columns; for tables, also plain columns"),
-    sort: z
-      .object({ by: z.enum(["category", "value"]), direction: z.enum(["asc", "desc"]) })
-      .optional(),
+      .describe("Position in the exported .pbix: 16:9 page split in 12 columns x 9 rows"),
+    category: groupFieldSchema.optional().describe("Axis / slices column (charts only)"),
+    rows: z.array(groupFieldSchema).max(4).default([]).describe("Row headers (matrix only)"),
+    columns: z.array(groupFieldSchema).max(2).default([]).describe("Column headers (matrix only)"),
+    values: z.array(pbiFieldSchema).max(10).default([]).describe("Measures or aggregated columns; tables may also list plain columns"),
+    sort: z.object({ by: z.enum(["category", "value"]), direction: z.enum(["asc", "desc"]) }).optional(),
     format: z.enum(["number", "integer", "currency", "percent"]).default("number"),
     text: z.string().optional().describe("Content of a text visual"),
   })
@@ -52,11 +54,8 @@ export const pbiBuilderVisualSchema = pbiVisualStateSchema
       return;
     }
     if (visual.values.length === 0) issue(`${visual.type} visuals need at least one value`, ["values"]);
-    const charted = ["bar", "column", "line", "area", "pie", "doughnut"].includes(visual.type);
-    if (charted && visual.category?.kind !== "column") issue(`${visual.type} visuals need a column as category`, ["category"]);
-    if (charted && visual.category?.kind === "column" && visual.category.aggregation) {
-      issue("the category cannot be aggregated", ["category"]);
-    }
+    if (chartTypes.has(visual.type) && !visual.category) issue(`${visual.type} visuals need a category column`, ["category"]);
+    if (visual.type === "matrix" && visual.rows.length === 0) issue("matrix visuals need at least one row field", ["rows"]);
     if (visual.type !== "table") {
       visual.values.forEach((field, index) => {
         if (field.kind === "column" && !field.aggregation) {
@@ -64,16 +63,10 @@ export const pbiBuilderVisualSchema = pbiVisualStateSchema
         }
       });
     }
-    if ((visual.type === "pie" || visual.type === "doughnut" || visual.type === "card") && visual.values.length > 1) {
+    if (["pie", "doughnut", "card"].includes(visual.type) && visual.values.length > 1) {
       issue(`${visual.type} visuals accept a single value`, ["values"]);
     }
   });
-
-export const pbiReportMeasureSchema = z.object({
-  table: z.string().describe("Existing table the measure is attached to"),
-  name: z.string().min(1).describe("Must not clash with a model measure or column"),
-  expression: z.string().min(1).describe("DAX expression, e.g. CALCULATE([Total Sales], 'Time'[Year] = 2013)"),
-});
 
 export const pbiBuilderPageSchema = pbiPageStateSchema.extend({
   displayName: z.string().min(1).max(60),
@@ -81,10 +74,7 @@ export const pbiBuilderPageSchema = pbiPageStateSchema.extend({
 });
 
 export const pbiBuilderArtefactSchema = pbiViewerArtefactSchema
-  .extend({
-    measures: z.array(pbiReportMeasureSchema).max(30).default([]).describe("Report-level DAX measures"),
-    pages: z.array(pbiBuilderPageSchema).min(1).max(10),
-  })
+  .extend({ pages: z.array(pbiBuilderPageSchema).min(1).max(10) })
   .superRefine((report, ctx) => {
     const names = report.pages.map((page) => page.name);
     if (!names.includes(report.activePage)) {
@@ -100,7 +90,7 @@ export const pbiBuilderArtefactSchema = pbiViewerArtefactSchema
   });
 
 export type PbiField = z.infer<typeof pbiFieldSchema>;
-export type PbiReportMeasure = z.infer<typeof pbiReportMeasureSchema>;
+export type PbiGroupField = z.infer<typeof groupFieldSchema>;
 export type PbiBuilderArtefact = z.infer<typeof pbiBuilderArtefactSchema>;
 export type PbiBuilderPage = z.infer<typeof pbiBuilderPageSchema>;
 export type PbiBuilderVisual = z.infer<typeof pbiBuilderVisualSchema>;

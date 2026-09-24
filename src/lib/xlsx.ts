@@ -77,3 +77,37 @@ export async function sheetsToXlsx(sheets: XlsxSheet[]) {
     type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
   });
 }
+
+function cellValue(value: unknown): string | number | boolean | null {
+  if (value === null || value === undefined) return null;
+  if (value instanceof Date) return value.toISOString().slice(0, 10);
+  if (typeof value === "object") {
+    const cell = value as { result?: unknown; text?: string; richText?: Array<{ text: string }> };
+    if (cell.result !== undefined) return cellValue(cell.result);
+    if (cell.richText) return cell.richText.map((part) => part.text).join("");
+    return cell.text ?? null;
+  }
+  return value as string | number | boolean;
+}
+
+export async function readXlsx(blob: Blob) {
+  const { Workbook } = await import("exceljs");
+  const workbook = new Workbook();
+  await workbook.xlsx.load(await blob.arrayBuffer());
+  return workbook.worksheets.map((worksheet) => {
+    const rows: Array<Array<string | number | boolean | null>> = [];
+    worksheet.eachRow((row) => {
+      rows.push((row.values as unknown[]).slice(1).map(cellValue));
+    });
+    return { name: worksheet.name, rows };
+  });
+}
+
+export async function xlsxToText(blob: Blob, maxRows = 200) {
+  const sheets = await readXlsx(blob);
+  return sheets
+    .map(({ name, rows }) =>
+      [`## Sheet ${name}`, ...rows.slice(0, maxRows).map((row) => row.map((value) => value ?? "").join("\t"))].join("\n"),
+    )
+    .join("\n\n");
+}

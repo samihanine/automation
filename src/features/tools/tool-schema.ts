@@ -1,10 +1,8 @@
 import { z } from "zod";
-import type { ArtefactDefinition } from "@/features/artefacts";
-import type { Workspace } from "@/features/workspaces/workspace-schema";
+import type { ArtefactContext, ArtefactDefinition } from "@/features/artefacts";
 
-export type ToolContext = {
-  workspace: Workspace;
-  artefact: ArtefactDefinition;
+export type ToolContext = ArtefactContext & {
+  artefact?: ArtefactDefinition;
   getArtefactValue: () => unknown;
   setArtefactValue: (value: unknown) => void;
 };
@@ -12,6 +10,7 @@ export type ToolContext = {
 export type ToolDefinition<TInput = unknown> = {
   name: string;
   description: string;
+  available?: (context: ToolContext) => boolean;
   input: z.ZodType<TInput>;
   run: (input: TInput, context: ToolContext) => Promise<unknown>;
 };

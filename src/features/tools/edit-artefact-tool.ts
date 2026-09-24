@@ -42,6 +42,7 @@ function apply(root: unknown, operation: z.infer<typeof operationSchema>) {
 
 export const editArtefactTool = defineTool({
   name: "edit_artefact",
+  available: (context) => Boolean(context.artefact),
   description:
     "Applies small changes to the current artefact without resending it. Paths use dots and array indexes, e.g. \"pages.0.visuals.2.title\". Ops: set (replace a value), insert (add \"value\" to the array at \"path\", at \"index\" or at the end), remove (delete a key or array item). The result is validated like update_artefact. Prefer it over update_artefact for edits.",
   input: z.object({ operations: z.array(operationSchema).min(1).max(20) }),

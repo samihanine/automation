@@ -11,8 +11,9 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AgentRouteImport } from './routes/agent'
+import { Route as DatasetsRouteImport } from './routes/datasets'
+import { Route as ReportsRouteImport } from './routes/reports'
 import { Route as SettingsRouteImport } from './routes/settings'
-import { Route as WorkspacesRouteImport } from './routes/workspaces'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -24,49 +25,58 @@ const AgentRoute = AgentRouteImport.update({
   path: '/agent',
   getParentRoute: () => rootRouteImport,
 } as any)
+const DatasetsRoute = DatasetsRouteImport.update({
+  id: '/datasets',
+  path: '/datasets',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ReportsRoute = ReportsRouteImport.update({
+  id: '/reports',
+  path: '/reports',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const SettingsRoute = SettingsRouteImport.update({
   id: '/settings',
   path: '/settings',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const WorkspacesRoute = WorkspacesRouteImport.update({
-  id: '/workspaces',
-  path: '/workspaces',
   getParentRoute: () => rootRouteImport,
 } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/agent': typeof AgentRoute
+  '/datasets': typeof DatasetsRoute
+  '/reports': typeof ReportsRoute
   '/settings': typeof SettingsRoute
-  '/workspaces': typeof WorkspacesRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/agent': typeof AgentRoute
+  '/datasets': typeof DatasetsRoute
+  '/reports': typeof ReportsRoute
   '/settings': typeof SettingsRoute
-  '/workspaces': typeof WorkspacesRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/agent': typeof AgentRoute
+  '/datasets': typeof DatasetsRoute
+  '/reports': typeof ReportsRoute
   '/settings': typeof SettingsRoute
-  '/workspaces': typeof WorkspacesRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/agent' | '/settings' | '/workspaces'
+  fullPaths: '/' | '/agent' | '/datasets' | '/reports' | '/settings'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/agent' | '/settings' | '/workspaces'
-  id: '__root__' | '/' | '/agent' | '/settings' | '/workspaces'
+  to: '/' | '/agent' | '/datasets' | '/reports' | '/settings'
+  id: '__root__' | '/' | '/agent' | '/datasets' | '/reports' | '/settings'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AgentRoute: typeof AgentRoute
+  DatasetsRoute: typeof DatasetsRoute
+  ReportsRoute: typeof ReportsRoute
   SettingsRoute: typeof SettingsRoute
-  WorkspacesRoute: typeof WorkspacesRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -85,18 +95,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AgentRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/datasets': {
+      id: '/datasets'
+      path: '/datasets'
+      fullPath: '/datasets'
+      preLoaderRoute: typeof DatasetsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/reports': {
+      id: '/reports'
+      path: '/reports'
+      fullPath: '/reports'
+      preLoaderRoute: typeof ReportsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/settings': {
       id: '/settings'
       path: '/settings'
       fullPath: '/settings'
       preLoaderRoute: typeof SettingsRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/workspaces': {
-      id: '/workspaces'
-      path: '/workspaces'
-      fullPath: '/workspaces'
-      preLoaderRoute: typeof WorkspacesRouteImport
       parentRoute: typeof rootRouteImport
     }
   }
@@ -105,8 +122,9 @@ declare module '@tanstack/react-router' {
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AgentRoute: AgentRoute,
+  DatasetsRoute: DatasetsRoute,
+  ReportsRoute: ReportsRoute,
   SettingsRoute: SettingsRoute,
-  WorkspacesRoute: WorkspacesRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

@@ -4,6 +4,7 @@ import { defineTool } from "./tool-schema";
 
 export const updateArtefactTool = defineTool({
   name: "update_artefact",
+  available: (context) => Boolean(context.artefact),
   description:
     "Replaces the whole artefact. \"input\" IS the complete artefact object matching the artefact JSON schema (no wrapper). Use it to create the artefact or for large rewrites. Returns ok or the errors to fix.",
   input: z.record(z.string(), z.unknown()).describe("The complete artefact"),

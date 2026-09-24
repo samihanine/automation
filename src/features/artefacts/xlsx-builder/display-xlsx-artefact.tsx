@@ -1,20 +1,20 @@
 import { useState } from "react";
 import { DataTable } from "@/components/data-table";
 import { Spinner } from "@/components/ui/spinner";
-import { useDaxQuery } from "@/features/workspaces/use-dax-query";
-import type { Workspace } from "@/features/workspaces/workspace-schema";
+import { useDaxQuery } from "@/features/datasets/use-dax-query";
+import type { Dataset } from "@/features/datasets/dataset-schema";
 import { cn } from "@/lib/utils";
 import type { ArtefactRenderProps } from "../artefact-schema";
 import type { XlsxArtefact, XlsxArtefactSheet } from "./xlsx-artefact-schema";
 import { resolveXlsxSheet } from "./resolve-xlsx-sheet";
 
-export function DisplayXlsxArtefact({ value, workspace }: ArtefactRenderProps<XlsxArtefact>) {
+export function DisplayXlsxArtefact({ value, context }: ArtefactRenderProps<XlsxArtefact>) {
   const [active, setActive] = useState(0);
   const sheet = value.sheets[Math.min(active, value.sheets.length - 1)];
 
   return (
     <div className="flex h-full flex-col">
-      <SheetView key={sheet.name} sheet={sheet} workspace={workspace} />
+      <SheetView key={sheet.name} sheet={sheet} dataset={context.dataset} />
       <div className="flex shrink-0 gap-px overflow-x-auto border-t bg-muted">
         {value.sheets.map((item, index) => (
           <button
@@ -33,8 +33,8 @@ export function DisplayXlsxArtefact({ value, workspace }: ArtefactRenderProps<Xl
   );
 }
 
-function SheetView({ sheet, workspace }: { sheet: XlsxArtefactSheet; workspace: Workspace }) {
-  const query = useDaxQuery(workspace, sheet.query);
+function SheetView({ sheet, dataset }: { sheet: XlsxArtefactSheet; dataset: Dataset }) {
+  const query = useDaxQuery(dataset, sheet.query);
   if (query.isLoading) {
     return (
       <div className="flex flex-1 items-center justify-center">

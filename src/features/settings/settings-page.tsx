@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeftIcon, CheckCircle2Icon, CopyIcon, ExternalLinkIcon } from "lucide-react";
+import { AlertCircleIcon, ArrowLeftIcon, CheckCircle2Icon, CopyIcon, ExternalLinkIcon } from "lucide-react";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
@@ -16,10 +17,12 @@ import type { DeviceLogin } from "@/lib/pbi-auth";
 import { readSettings, writeSettings } from "@/lib/settings";
 import { errorMessage } from "@/lib/utils";
 
-export function SettingsPage() {
+export function SettingsPage({ tokenError }: { tokenError: boolean }) {
   const [settings, setSettings] = useState(readSettings);
+  const queryClient = useQueryClient();
   const save = (patch: Partial<typeof settings>) => {
     setSettings(writeSettings(patch));
+    void queryClient.invalidateQueries({ queryKey: ["llm-auth"] });
     toast.add({ title: "Settings saved", type: "success" });
   };
 
@@ -32,6 +35,14 @@ export function SettingsPage() {
         </Button>
         <h1 className="text-center text-lg font-semibold">Settings</h1>
       </header>
+
+      {tokenError && (
+        <Alert variant="destructive">
+          <AlertCircleIcon />
+          <AlertTitle>Invalid AI token</AlertTitle>
+          <AlertDescription>The AI API rejected the current token (or no token is set). Enter a valid token below to use the agent.</AlertDescription>
+        </Alert>
+      )}
 
       <PowerBiCard />
 

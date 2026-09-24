@@ -9,22 +9,19 @@ import { validatePbiViewerArtefact } from "./validate-pbi-viewer-artefact";
 export const pbiViewerArtefact = defineArtefact({
   type: "pbi-viewer",
   label: "PBI Viewer",
-  description: "Navigate and filter the workspace Power BI report",
-  examples: [
-    "Show the overview page filtered on the latest year",
-    "What does each page of this report show?",
-    "Filter the report on the best performing district",
-  ],
+  description: "Navigate and filter an existing Power BI report",
   icon: MonitorPlayIcon,
+  requiresReport: true,
   schema: pbiViewerArtefactSchema,
   prompt: pbiViewerArtefactPrompt,
-  context: describeReportPages,
-  initial: (workspace) => ({
-    title: workspace.reportConfig.name,
-    activePage: workspace.reportConfig.pages[0]?.name ?? "",
+  describeContext: describeReportPages,
+  initial: ({ report }) => ({
+    title: report?.name ?? "Report",
+    activePage: report?.config.pages[0]?.name ?? "",
     filters: [],
     pages: [],
   }),
   validate: validatePbiViewerArtefact,
   render: DisplayPbiViewerArtefact,
+  downloads: [],
 });

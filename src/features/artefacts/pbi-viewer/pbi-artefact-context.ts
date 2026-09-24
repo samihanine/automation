@@ -1,12 +1,14 @@
-import type { Workspace } from "@/features/workspaces/workspace-schema";
+import type { ArtefactContext } from "../artefact-schema";
 
-export function describeReportPages(workspace: Workspace) {
-  const { reportConfig } = workspace;
+export function describeReportPages({ report }: ArtefactContext) {
+  if (!report) return "No report selected.";
   return [
-    `Report "${reportConfig.name}" pages (name → display name, then visuals as name: type "title"):`,
-    ...reportConfig.pages.flatMap((page) => [
+    `Report "${report.name}" pages (name → display name, then visuals as name: type "title"):`,
+    ...report.config.pages.flatMap((page) => [
       `- ${page.name} → "${page.displayName}"`,
       ...page.visuals.map((visual) => `    - ${visual.name}: ${visual.type}${visual.title ? ` "${visual.title}"` : ""}`),
     ]),
+    "",
+    `Report business context (written by the user):\n${report.context.trim() || "(none)"}`,
   ].join("\n");
 }

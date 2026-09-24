@@ -7,6 +7,20 @@ export const pbiTargetSchema = z.object({
   column: z.string().describe("Column name, e.g. Territory"),
 });
 
+const advancedOperatorSchema = z.enum([
+  "Is",
+  "IsNot",
+  "LessThan",
+  "LessThanOrEqual",
+  "GreaterThan",
+  "GreaterThanOrEqual",
+  "Contains",
+  "DoesNotContain",
+  "StartsWith",
+]);
+
+type AdvancedOperator = z.infer<typeof advancedOperatorSchema>;
+
 const filterValueSchema = z.union([z.string(), z.number(), z.boolean()]);
 
 export const pbiFilterSchema = z.discriminatedUnion("filterType", [
@@ -23,17 +37,7 @@ export const pbiFilterSchema = z.discriminatedUnion("filterType", [
     conditions: z
       .array(
         z.object({
-          operator: z.enum([
-            "Is",
-            "IsNot",
-            "LessThan",
-            "LessThanOrEqual",
-            "GreaterThan",
-            "GreaterThanOrEqual",
-            "Contains",
-            "DoesNotContain",
-            "StartsWith",
-          ]),
+          operator: advancedOperatorSchema,
           value: filterValueSchema,
         }),
       )
@@ -68,6 +72,50 @@ export function toPowerBiFilter(filter: PbiFilter): models.IFilter {
     filterType: 0,
   } as models.IAdvancedFilter;
 }
+
+const advancedOperators = new Set<string>(advancedOperatorSchema.options);
+
+export function fromPowerBiFilter(filter: models.IFilter): PbiFilter | null {
+  const target = filter.target as { table?: string; column?: string };
+  if (!target.table || !target.column) return null;
+  const columnTarget = { table: target.table, column: target.column };
+  if (filter.filterType === 1) {
+    const basic = filter as models.IBasicFilter;
+    if (basic.operator === "All" || basic.values.length === 0) return null;
+    return { filterType: "basic", target: columnTarget, operator: basic.operator, values: basic.values };
+  }
+  if (filter.filterType === 0) {
+    const advanced = filter as models.IAdvancedFilter;
+    const conditions = advanced.conditions ?? [];
+    if (conditions.length === 0 || conditions.some((condition) => !advancedOperators.has(condition.operator))) return null;
+    return {
+      filterType: "advanced",
+      target: columnTarget,
+      logicalOperator: advanced.logicalOperator === "Or" ? "Or" : "And",
+      conditions: conditions.map((condition) => ({
+        operator: condition.operator as AdvancedOperator,
+        value: condition.value as string | number | boolean,
+      })),
+    };
+  }
+  return null;
+}
+
+export function describeFilter(filter: PbiFilter) {
+  const target = `${filter.target.table}[${filter.target.column}]`;
+  return filter.filterType === "basic"
+    ? `${target} ${filter.operator === "In" ? "=" : "≠"} ${filter.values.join(", ")}`
+    : `${target} ${filter.conditions.map((condition) => `${condition.operator} ${condition.value}`).join(` ${filter.logicalOperator} `)}`;
+}
+
+const embeddedReports = new Map<string, Report>();
+
+export function registerEmbeddedReport(reportId: string, report: Report | null) {
+  if (report) embeddedReports.set(reportId, report);
+  else embeddedReports.delete(reportId);
+}
+
+export const getEmbeddedReport = (reportId: string) => embeddedReports.get(reportId);
 
 const daxLiteral = (value: string | number | boolean) =>
   typeof value === "string" ? `"${value.replace(/"/g, '""')}"` : String(value);
